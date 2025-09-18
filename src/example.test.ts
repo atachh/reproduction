@@ -1,31 +1,41 @@
-import { Entity, MikroORM, PrimaryKey, Property } from '@mikro-orm/sqlite';
+import { Entity, MikroORM, PrimaryKey, Property } from "@mikro-orm/sqlite";
+
+const fullNameExpression = `(first_name + ' ' + last_name) STORED`;
 
 @Entity()
 class User {
-
   @PrimaryKey()
   id!: number;
 
   @Property()
-  name: string;
+  firstName: string;
+
+  @Property()
+  lastName: string;
 
   @Property({ unique: true })
   email: string;
 
-  constructor(name: string, email: string) {
-    this.name = name;
+  @Property({
+    generated: fullNameExpression,
+    type: "text",
+  })
+  fullName?: string;
+
+  constructor(firstName: string, lastName: string, email: string) {
+    this.firstName = firstName;
+    this.lastName = lastName;
     this.email = email;
   }
-
 }
 
 let orm: MikroORM;
 
 beforeAll(async () => {
   orm = await MikroORM.init({
-    dbName: ':memory:',
+    dbName: ":memory:",
     entities: [User],
-    debug: ['query', 'query-params'],
+    debug: ["query", "query-params"],
     allowGlobalContext: true, // only for testing
   });
   await orm.schema.refreshDatabase();
@@ -35,17 +45,18 @@ afterAll(async () => {
   await orm.close(true);
 });
 
-test('basic CRUD example', async () => {
-  orm.em.create(User, { name: 'Foo', email: 'foo' });
-  await orm.em.flush();
-  orm.em.clear();
+test("generated columns are correctly processed by SqlSchemaGenerator", async () => {
+  const schemaGenerator = orm.getSchemaGenerator();
 
-  const user = await orm.em.findOneOrFail(User, { email: 'foo' });
-  expect(user.name).toBe('Foo');
-  user.name = 'Bar';
-  orm.em.remove(user);
-  await orm.em.flush();
+  const schema = schemaGenerator.getTargetSchema();
+  const table = schema.getTable("user");
+  const column = table?.getColumn("full_name");
 
-  const count = await orm.em.count(User, { email: 'foo' });
-  expect(count).toBe(0);
+  const sql = await schemaGenerator.getUpdateSchemaSQL();
+
+  // Schema was created correctly with generated expression
+  expect(column?.generated).toEqual(fullNameExpression);
+
+  // No changes are required
+  expect(sql.length).toBe(0);
 });
