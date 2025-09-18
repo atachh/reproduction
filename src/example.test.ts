@@ -1,30 +1,37 @@
-import { Entity, MikroORM, PrimaryKey, Property } from "@mikro-orm/sqlite";
+import {
+  DatabaseSchema,
+  Entity,
+  MikroORM,
+  PostgreSqlDriver,
+  PrimaryKey,
+  Property,
+} from "@mikro-orm/postgresql";
 
 @Entity()
-class User {
+class EntityOne {
   @PrimaryKey()
   id!: number;
 
   @Property()
-  firstName: string;
+  col1: string;
 
   @Property()
-  lastName: string;
+  col2: string;
 
   @Property({ unique: true })
-  email: string;
+  col3: string;
 
   @Property({
-    generated: `(CASE WHEN first_name IS NOT NULL THEN 'chargeback' WHEN last_name IS NOT NULL THEN 'reversed' WHEN email IS NOT NULL THEN 'cancelled' ELSE 'unattempted' END) stored`,
+    generated: `(CASE WHEN (col1 IS NOT NULL) THEN 'one'::text WHEN (col2 IS NOT NULL) THEN 'two'::text WHEN (col3 IS NOT NULL) THEN 'three'::text ELSE 'four'::text END) stored`,
     type: "text",
     nullable: true,
   })
-  fullName?: string;
+  generated?: string;
 
-  constructor(firstName: string, lastName: string, email: string) {
-    this.firstName = firstName;
-    this.lastName = lastName;
-    this.email = email;
+  constructor(col1: string, col2: string, col3: string) {
+    this.col1 = col1;
+    this.col2 = col2;
+    this.col3 = col3;
   }
 }
 
@@ -32,11 +39,18 @@ let orm: MikroORM;
 
 beforeAll(async () => {
   orm = await MikroORM.init({
-    dbName: ":memory:",
-    entities: [User],
-    debug: ["query", "query-params"],
+    driver: PostgreSqlDriver,
+    host: "localhost",
+    port: 5432,
+    user: "postgres",
+    password: "postgres",
+    dbName: "mikro_orm_test",
+    entities: [EntityOne],
+    debug: ["schema"],
     allowGlobalContext: true, // only for testing
   });
+
+  await orm.schema.dropDatabase();
   await orm.schema.refreshDatabase();
 });
 
@@ -45,12 +59,21 @@ afterAll(async () => {
 });
 
 test("generated columns are correctly processed by SqlSchemaGenerator", async () => {
-  const schemaGenerator = orm.getSchemaGenerator();
+  const actualSchema = await DatabaseSchema.create(
+    orm.em.getConnection(),
+    orm.em.getPlatform(),
+    orm.config,
+    orm.em.schema
+  );
 
-  const sql = await schemaGenerator.getUpdateSchemaSQL();
+  const generatedColumn = actualSchema
+    .getTable("entity_one")!
+    .getColumn("generated")!;
 
-  console.log(sql);
+  // Proof that "CASE ... END" generated expressions are parsed as multi-line
+  expect(generatedColumn.generated).not.toContain("\n");
 
-  // No changes are required
-  expect(sql.length).toBe(0);
+  // Proof that the expression is missing the parentheses around "CASE ... END"
+  expect(generatedColumn.generated).toContain("(CASE");
+  expect(generatedColumn.generated).toContain("END) stored");
 });
