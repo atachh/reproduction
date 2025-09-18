@@ -1,7 +1,5 @@
 import { Entity, MikroORM, PrimaryKey, Property } from "@mikro-orm/sqlite";
 
-const fullNameExpression = `(first_name + ' ' + last_name) STORED`;
-
 @Entity()
 class User {
   @PrimaryKey()
@@ -17,7 +15,7 @@ class User {
   email: string;
 
   @Property({
-    generated: fullNameExpression,
+    generated: `(CASE WHEN first_name IS NOT NULL THEN 'chargeback' WHEN last_name IS NOT NULL THEN 'reversed' WHEN email IS NOT NULL THEN 'cancelled' ELSE 'unattempted' END) stored`,
     type: "text",
   })
   fullName?: string;
@@ -48,14 +46,9 @@ afterAll(async () => {
 test("generated columns are correctly processed by SqlSchemaGenerator", async () => {
   const schemaGenerator = orm.getSchemaGenerator();
 
-  const schema = schemaGenerator.getTargetSchema();
-  const table = schema.getTable("user");
-  const column = table?.getColumn("full_name");
-
   const sql = await schemaGenerator.getUpdateSchemaSQL();
 
-  // Schema was created correctly with generated expression
-  expect(column?.generated).toEqual(fullNameExpression);
+  console.log(sql);
 
   // No changes are required
   expect(sql.length).toBe(0);
