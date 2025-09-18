@@ -17,6 +17,7 @@ class User {
   @Property({
     generated: `(CASE WHEN first_name IS NOT NULL THEN 'chargeback' WHEN last_name IS NOT NULL THEN 'reversed' WHEN email IS NOT NULL THEN 'cancelled' ELSE 'unattempted' END) stored`,
     type: "text",
+    nullable: true,
   })
   fullName?: string;
 
